@@ -1,0 +1,352 @@
+<html>
+    <head>
+      <link href="data:image/x-icon;base64,AAABAAEAEBAQAAAAAAAoAQAAFgAAACgAAAAQAAAAIAAAAAEABAAAAAAAgAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAoVMAACecVgChodEA1NTUALOzswAnJ5wA5ubmAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZmAAAAAAZmBmMAABEAA2YAAAABERAAAAAAAAERAAAiAAcAABAAACIAAAAAAAAAAAAHAAAAAEAAAAAAAAAABAAFBQAAAAQAAAAAAAAAAABQVQUAAAAABQAAAABQVQAAAAAAUAAAAAAAAAAAAAAAAAAAAAAAAABVAAAAAFUAAAAAAf8QAAHnEAAPw/AAD8eQAAxvkAAM5/AADIDwAA48cAAAPBAABZ+AAAHfAAAPgAAADgAAAAwAAAAIAHAAAB/wAA" rel="icon" type="image/x-icon" />
+      <link href="css/tabulator_modern.min.css" rel="stylesheet">
+      <!-- Latest compiled and minified CSS -->
+      <link href="css/bootstrap.min.css" rel="stylesheet" rossorigin="anonymous">
+      <script type="text/javascript" src="	js/tabulator.min.js"></script>
+    </head>
+<body>
+     
+     <div class=container>
+     <div class="row align-items-end">
+      <div class="col-sm">
+       <br/>
+       <button id="reset-board" type="button" class="btn btn-primary" data-bs-toggle="button" autocomplete="off">Reset board</button>
+       <br/>
+      </div>
+      <div class="col-sm">
+       <div class="form-check form-switch">
+       <input class="form-check-input" type="checkbox" id="mirror-problem" onclick="setProblem();">
+       <label class="form-check-label" for="mirror-problem">Mirror problem</label>
+       </div>
+      </div>
+      <div class="col-sm">
+       <label id="repeat-text">Circuit Repeat :</label>
+       <button onclick="this.parentNode.querySelector('input[type=number]').stepDown()" ><</button>
+       <input  id="circuit-repeat" min="0" max=10 name="quantity" value="1" type="number">
+       <button onclick="this.parentNode.querySelector('input[type=number]').stepUp()" >></button>
+      </div>
+      </div> <!-- End row -->
+     <div id="table"  class="table-striped"></div>
+     </br>
+     <div class="row justify-content-end"> 
+        <div class="col"></div>
+        <div class="col-md-auto">
+          <div class="form-check form-switch">
+           <input class="form-check-input" type="checkbox" id="edit-problem" onclick="">
+           <label class="form-check-label" for="edit-problem">Edit problems</label>
+          </div>
+        </div>
+       <div class="col-md-auto">
+         <button id="add-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Add Problem</button>
+         <button id="delete-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Delete Problem</button>
+         <button id="save-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Save</button>
+         <button id="cancel-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Cancel</button>
+       </div>
+     </div>
+     
+     <script>
+    host = location.hostname;
+    // get required data 
+    getProblems();
+    getLedMap();
+    
+    // hide buttons
+    document.getElementById('add-data').style.visibility = 'hidden';
+    document.getElementById('delete-data').style.visibility = 'hidden';
+    document.getElementById('save-data').style.visibility = 'hidden';
+    document.getElementById('cancel-data').style.visibility = 'hidden';
+     
+    //create table 
+     var table = new Tabulator("#table",  {
+       layout:"fitColumns",
+       selectable:1,
+       columns:[
+       {title:"Name", field:"name",headerFilter:true, width:300,editor:"input", editable:isEditable},
+       {title:"Grade",field:"grade",width:100,editor:"select", editorParams:{values:{"VB":"VB","V0":"V0","V1":"V1","V2":"V2","V3":"V3","V4":"V4","V5":"V5","V6":"V6"}}, headerFilter:true, headerFilterParams:{values:true},editable:isEditable},
+       {title:"Circuit",field:"circuit",width:100,editor:"select", editorParams:{values:{"Y":"Y","N":"N"}}, headerFilter:true, headerFilterParams:{values:true},editable:isEditable},
+       {title:"Comment",field:"comment",widthGrow:3,editor:"input", editable:isEditable},
+       {title:"Start Holds",field:"startHolds",editor:"input", editable:isEditable, visible:false},
+       {title:"Hand Holds",field:"handHolds",editor:"input", editable:isEditable, visible:false},
+       {title:"Top Holds",field:"topHolds",editor:"input", editable:isEditable, visible:false}
+       ],
+       rowSelected:function(row){ // on selecting a row - set it
+         console.log("Row selected");
+         var editable = document.getElementById('edit-problem').checked;
+         console.log("Editable? : " + editable);
+       	 if(!editable) {
+       	 	setProblem();
+       	 }else{
+       	 // if editable and selected row, allow delete
+       	   document.getElementById("delete-data").disabled = false;
+       	 }
+       },
+       rowDeselected:function(row){ // on selecting a row - set it
+         console.log("Row deselected");
+         var editable = document.getElementById('edit-problem').checked;
+         console.log("Editable? : " + editable);
+       	 if(editable) {
+       	 	document.getElementById("delete-data").disabled = true;
+       	 }
+       },
+       dataChanged:function(data){//data - the updated table data
+          enableSave();
+       }
+      });
+      
+     
+    //Clear filters on "Clear Filters" button click
+    document.getElementById("reset-board").addEventListener("click", function(){
+      sendRequest(""); // send empty problem to blank board
+      table.deselectRow(); // unselect selected row
+	});
+	
+	//Cancel edit and reload table data from file
+    document.getElementById("add-data").addEventListener("click", function(){
+      addData();
+    });
+    
+    //Cancel edit and reload table data from file
+    document.getElementById("delete-data").addEventListener("click", function(){
+      deleteData();
+    });
+	
+	document.getElementById("edit-problem").addEventListener("click", function(){
+      toggleEdit();
+	});
+	
+    //Cancel edit and reload table data from file
+    document.getElementById("cancel-data").addEventListener("click", function(){
+      cancelEdit();
+    });
+    
+    
+    
+	//Get table data test
+    document.getElementById("save-data").addEventListener("click", function(){
+        var array = table.getData();
+        var json = JSON.stringify(array);
+        console.log("Table array: " + json);
+        console.log("Send json to board....");
+        // construct an HTTP request
+        var xhr = new XMLHttpRequest();
+        var url = "http://"+host+"/updateProblems";
+        xhr.open("POST", url);
+        xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+
+        // send the collected data as JSON
+        xhr.send(json);
+        console.log("Sent!");
+        xhr.onloadend = function () {
+        // done
+        console.log("Response received!");
+        receiveResponses(this);
+        getProblems();
+        disableSave();
+        };
+    });
+	////////////////////////////////////////////////////
+	
+	
+	// HELPER FUNCTIONS
+	
+	// Add problem - add dummy problem to edit
+	function addData(){
+	  table.addData([{circuit:"N"}], false);
+	}
+	
+	// Add problem - add dummy problem to edit
+	function deleteData(){
+	  var selectedRows = table.getSelectedRows(); //get array of currently selected row components.
+      if(selectedRows.length > 0){
+        var row = selectedRows[0]; //we only allow one selected row
+        row.delete();
+        document.getElementById("delete-data").disabled = true; 
+	  }
+	}
+	
+	// Get problems
+    function getProblems(){
+      const problemsReq = new Request('problems.json');
+      fetch(problemsReq, {cache: "no-store"})
+      .then(response => response.json())
+      .then(data => {
+       	console.log("JSON problems (from file): " + data);
+       	table.setData(data);
+      })
+       .catch(console.error);
+    };
+    
+    // Get LED conversions 
+    function getLedMap(){
+      ledMap = "";
+      const holdsRey = new Request('holdMap.json');
+      fetch(holdsRey, {cache: "no-store"})
+       .then(response => response.json())
+       .then(data => {
+       	 console.log("LED  maps (from file): " + data);
+       	 ledMap = data;
+       	})
+       .catch(console.error);
+    };
+	// refetch problems and disable save/cancel buttons
+	function cancelEdit(){
+      getProblems();
+      disableSave();
+    };
+    
+	//enable save button
+	function enableSave(){
+	  document.getElementById("save-data").disabled = false;
+	  document.getElementById("cancel-data").disabled = false;
+	}
+	
+	function disableSave(){
+	  document.getElementById("save-data").disabled = true;
+	  document.getElementById("cancel-data").disabled = true;
+	}
+	
+	function isEditable(){
+	  return document.getElementById('edit-problem').checked;
+	}
+	
+    // toggle whether data can be edited or not
+    function toggleEdit(cell){
+      var editable = document.getElementById('edit-problem').checked;
+      console.log("Edit check : "+ editable);
+      // if turning off edit and has changes (save button enabled) then cancel edit)
+      if(!editable && document.getElementById("save-data").disabled == false){
+        cancelEdit();
+      }
+      if(editable){
+        table.showColumn("startHolds");
+        table.showColumn("handHolds");
+        table.showColumn("topHolds");
+        // show buttons
+        document.getElementById('add-data').style.visibility = 'visible';
+        document.getElementById('delete-data').style.visibility = 'visible';
+        document.getElementById('save-data').style.visibility = 'visible';
+        document.getElementById('cancel-data').style.visibility = 'visible';
+        document.getElementById("add-data").disabled = false;
+        var selectedRows = table.getSelectedRows(); //get array of currently selected row components.
+        if(selectedRows.length > 0){
+          document.getElementById("delete-data").disabled = false;
+        }
+        table.redraw();
+        
+      } else {
+        table.hideColumn("startHolds");
+        table.hideColumn("handHolds");
+        table.hideColumn("topHolds");	
+        table.redraw(true);
+        // hide buttons
+        document.getElementById('add-data').style.visibility = 'hidden';
+        document.getElementById('delete-data').style.visibility = 'hidden';
+        document.getElementById('save-data').style.visibility = 'hidden';
+        document.getElementById('cancel-data').style.visibility = 'hidden';
+        document.getElementById("add-data").disabled = true;
+        document.getElementById("delete-data").disabled = true;        
+      }
+      return editable;
+    }
+    // when mirror toggle changed
+    function setProblem(){
+      var selectedRows = table.getSelectedRows(); //get array of currently selected row components.
+      if(selectedRows.length > 0){
+        var row = selectedRows[0]; //we only allow one selected row
+        var rowdata = row.getData();
+        const mirror  = document.getElementById('mirror-problem');
+        const repeats = document.getElementById('circuit-repeat').value;
+        console.log("Mirror Problem?: "+mirror.checked);
+        console.log("Circuit?: "+rowdata.circuit);
+        console.log("Repeats?: "+repeats);
+        var url=""
+        if(rowdata.circuit == "Y"){
+          var sh = genQueryString(rowdata.startHolds, "s", mirror.checked);
+          var hh = genQueryString(rowdata.handHolds, "h", mirror.checked);
+          var th = genQueryString(rowdata.topHolds, "t", mirror.checked);
+          url = sh+"&"+hh+"&"+th+"&c=1&r="+repeats; 
+        } else {
+          var sh = genQueryString(rowdata.startHolds, "s", mirror.checked);
+          var hh = genQueryString(rowdata.handHolds, "h", mirror.checked);
+          var th = genQueryString(rowdata.topHolds, "t", mirror.checked);
+          url = sh+"&"+hh+"&"+th;
+          
+        };
+        //var url = sh+"&"+hh+"&"+th;
+        console.log("Query: " + url);
+        sendRequest(url);
+      } 
+    }
+    
+    function sendRequest(urlParams){
+      const Http = new XMLHttpRequest();
+      var hostname = location.hostname;
+      var url = "http://"+host+"/led?"+urlParams;
+      console.log("URL: "+ url);
+      console.log("Hostname: "+hostname);
+      Http.open("GET", url);
+      //Http.timeout = 2000; // Set timeout to 4 seconds (4000 milliseconds)
+      Http.ontimeout = function () { alert("ERROR: Request Timed Out"); }
+      Http.send();
+
+      Http.onreadystatechange = function() {receiveResponses(this)};
+    }
+
+    function getJson(file){
+      const Http = new XMLHttpRequest();
+      var url = "http://"+host+"/"+file;
+      console.log(url);
+      Http.open("GET", url);
+      //Http.timeout = 2000; // Set timeout to 4 seconds (4000 milliseconds)
+      Http.ontimeout = function () { alert("ERROR: Request Timed Out"); }
+      Http.send();
+
+      Http.onreadystatechange = function() {
+      if (Http.readyState == 4) {
+        if (Http.status == 200) {
+          console.log("We got a response : " + Http.response);
+          return this.responseText
+        } else if (Http.status == 0) {
+          console.log("The computer appears to be offline.");
+          alert("ERROR: Board appears to be offline");
+        }
+       } 	
+      };
+    }    
+
+    
+    function genQueryString(holds, type, mirror) {
+      // build query string for start holds
+      querystr="";
+      var holdsArr = holds.split(',')
+      for (i = 0; i < holdsArr.length; i++) {
+      	console.log("Hold : " + holdsArr[i]);
+        led = ledMap.find(o => o.logical == holdsArr[i]);
+      	if(!mirror){
+      	  // not mirroring so put original hold locations
+      	  querystr += i == 0 ? querystr += led.physical+"="+type : "&"+led.physical+"="+type;
+      	}else{
+      	  //mirroring so find mirrored holds location
+      	  mirled = ledMap.find(o => o.logical == led.mirror);
+      	  querystr += i == 0 ? querystr += mirled.physical+"="+type : "&"+mirled.physical+"="+type;
+        }
+      }
+      return querystr; 
+    }
+     
+    function receiveResponses(thttp) {
+      if (thttp.readyState == 4) {
+        if (thttp.status == 200) {
+          console.log("We got a response : " + thttp.response);
+        } else if (thttp.status == 0) {
+          console.log("The computer appears to be offline.");
+          //alert("ERROR: Board appears to be offline");
+        }
+      }
+    };
+         </script>
+<script src="		js/bootstrap.bundle.min.js" crossorigin="anonymous"></script></body>
+
+</html>

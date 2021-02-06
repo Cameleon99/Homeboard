@@ -1,0 +1,228 @@
+<html>
+    <head>
+        <link href="https://unpkg.com/tabulator-tables@4.9.0/dist/css/tabulator_modern.min.css" rel="stylesheet">
+        <!-- Latest compiled and minified CSS -->
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-giJF6kkoqNQ00vy+HMDP7azOuL0xtbfIcaT9wjKHr8RbDVddVHyTfAAsrekwKmP1" crossorigin="anonymous">
+		<script type="text/javascript" src="https://unpkg.com/tabulator-tables@4.9.0/dist/js/tabulator.min.js"></script>
+    </head>
+<body>
+     
+     <div class=container>
+     <div id="table"  class="table-striped"></div>
+     </br>     
+     <div class="row justify-content-end"> 
+       <div class="col-md-auto">
+         <p>Current Physical LED: <span id="currLed">None</span>
+         <button id="min1" type="button" class="btn btn-primary" data-bs-toggle="button" autocomplete="off" disabled><</button>
+         <button id="add1" type="button" class="btn btn-primary" data-bs-toggle="button" autocomplete="off">></button>
+         </p>
+         
+        </div>
+       <div class="col-md-auto">
+         <button id="add-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off">Add Row</button>
+         <button id="delete-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Delete Row</button>
+         <button id="save-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off">Save</button>
+         <button id="cancel-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off">Cancel</button>
+       </div>
+      </div>
+     <script>
+
+    // get required data 
+    getLedMap();
+    
+    // hide buttons
+    //document.getElementById('add-data').style.visibility = 'hidden';
+    //document.getElementById('delete-data').style.visibility = 'hidden';
+    //document.getElementById('save-data').style.visibility = 'hidden';
+    //document.getElementById('cancel-data').style.visibility = 'hidden';
+     
+    //create table 
+     var table = new Tabulator("#table",  {
+       //data:tableData,
+       layout:"fitColumns",
+       selectable:1,
+       columns:[
+       //{title:"ID",field:"id",visible:false},
+       {title:"Logical", field:"logical", width:300,editor:"input", editable:true},
+	   {title:"physical", field:"physical", width:300,editor:"input", editable:true},
+	   {title:"mirror", field:"mirror", width:300,editor:"input", editable:true},
+       ],
+       rowSelected:function(row){ // on selecting a row - set it
+         console.log("Row selected");
+         document.getElementById("delete-data").disabled = false;
+       },
+       rowDeselected:function(row){ // on selecting a row - set it
+         console.log("Row deselected");
+         document.getElementById("delete-data").disabled = true;
+       },
+       dataChanged:function(data){//data - the updated table data
+          enableSave();
+       }
+      });
+      	
+	//Cancel edit and reload table data from file
+    document.getElementById("add-data").addEventListener("click", function(){
+      addData();
+    });
+    
+    //Cancel edit and reload table data from file
+    document.getElementById("delete-data").addEventListener("click", function(){
+      deleteData();
+    });
+	
+    //Cancel edit and reload table data from file
+    document.getElementById("cancel-data").addEventListener("click", function(){
+      cancelEdit();
+    });
+    
+    
+	//Get table data test
+    document.getElementById("save-data").addEventListener("click", function(){
+    	table.setSort("logical", "asc");
+        var array = table.getData();
+        var json = JSON.stringify(array);
+        console.log("Table array: " + json);
+        console.log("Send json to board....");
+        // construct an HTTP request
+        var xhr = new XMLHttpRequest();
+        var url = "http://192.168.1.193/updateMap";
+        xhr.open("POST", url);
+        xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+
+        // send the collected data as JSON
+        xhr.send(json);
+        console.log("Sent!");
+        xhr.onloadend = function () {
+        // done
+        console.log("Whats here?!");
+        receiveResponses(this);
+        getLedMap();
+        disableSave();
+        };
+    });
+	////////////////////////////////////////////////////
+	
+	
+	// HELPER FUNCTIONS
+	
+	// Add problem - add dummy problem to edit
+	function addData(){
+	  table.addData([""], false);
+	}
+	
+	// Add problem - add dummy problem to edit
+	function deleteData(){
+	  var selectedRows = table.getSelectedRows(); //get array of currently selected row components.
+      if(selectedRows.length > 0){
+        var row = selectedRows[0]; //we only allow one selected row
+        //var rowdata = row.getData();
+        //table.deleteRow(15);
+        row.delete();
+        document.getElementById("delete-data").disabled = true; 
+	  }
+	}
+	
+	// Get problems
+    function getLedMap(){
+      const problemsReq = new Request('holdMap.json');
+      fetch(problemsReq, {cache: "no-store"})
+      .then(response => response.json())
+      .then(data => {
+       	console.log("JSON problems (from file): " + data);
+       	table.setData(data);
+       	table.setSort("logical", "asc");
+      })
+       .catch(console.error);
+    };
+    
+	// refetch problems and disable save/cancel buttons
+	function cancelEdit(){
+      getLedMap();
+      disableSave();
+    };
+    
+	//enable save button
+	function enableSave(){
+	  document.getElementById("save-data").disabled = false;
+	  document.getElementById("cancel-data").disabled = false;
+	}
+	
+	function disableSave(){
+	  document.getElementById("save-data").disabled = true;
+	  document.getElementById("cancel-data").disabled = true;
+	}
+	
+	function isEditable(){
+	  return document.getElementById('edit-problem').checked;
+	}
+
+    function getJson(file){
+      const Http = new XMLHttpRequest();
+      var url = "http://192.168.1.193/"+file;
+      console.log(url);
+      Http.open("GET", url);
+      //Http.timeout = 2000; // Set timeout to 4 seconds (4000 milliseconds)
+      Http.ontimeout = function () { alert("ERROR: Request Timed Out"); }
+      Http.send();
+
+      Http.onreadystatechange = function() {
+      if (Http.readyState == 4) {
+        if (Http.status == 200) {
+          console.log("We got a response : " + Http.response);
+          return this.responseText
+        } else if (Http.status == 0) {
+          console.log("The computer appears to be offline.");
+          alert("ERROR: Board appears to be offline");
+        }
+       } 	
+      };
+    }    
+
+    //Current LED position
+    var pos = 0;
+    //Clear filters on "Clear Filters" button click
+    document.getElementById("min1").addEventListener("click", function(){
+    	pos = pos > 1 ? pos - 1 : 1;
+        sendRequest(pos+"=s"); // send empty problem to blank board
+        document.getElementById("currLed").innerText = pos;
+        if(pos < 2) document.getElementById("min1").disabled = true;
+        //table.deselectRow(); // unselect selected row
+	});
+	
+	document.getElementById("add1").addEventListener("click", function(){
+      pos = pos + 1;
+      sendRequest(pos+"=s"); // send empty problem to blank board
+      document.getElementById("currLed").innerText = pos;
+      if(pos > 1) document.getElementById("min1").disabled = false;
+      //table.deselectRow(); // unselect selected row
+	});
+	
+	
+    function sendRequest(urlParams){
+      const Http = new XMLHttpRequest();
+      var url = "http://192.168.1.193/led?"+urlParams;
+      console.log(url);
+      Http.open("GET", url);
+      Http.timeout = 2000; // Set timeout to 4 seconds (4000 milliseconds)
+      Http.ontimeout = function () { alert("ERROR: Request Timed Out"); }
+      Http.send();
+
+      Http.onreadystatechange = function() {receiveResponses(this)};
+    
+    }
+     
+    function receiveResponses(thttp) {
+      if (thttp.readyState == 4) {
+        if (thttp.status == 200) {
+          console.log("We got a response : " + thttp.response);
+        } else if (thttp.status == 0) {
+          console.log("The computer appears to be offline.");
+          //alert("ERROR: Board appears to be offline");
+        }
+      }
+    };
+         </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-ygbV9kiqUc6oa4msXn9868pTtWMgiQaeYH7/t7LECLbyPA2x65Kgf80OJFdroafW" crossorigin="anonymous"></script>
+</body>
+
+</html>
