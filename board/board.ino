@@ -176,36 +176,6 @@ void loop(void) {
 
 // HANDLE DIFFERENT PAGES
 
-void handleRoot() {
-  digitalWrite(led, 1);
-  char temp[400];
-  int sec = millis() / 1000;
-  int min = sec / 60;
-  int hr = min / 60;
-
-  snprintf(temp, 400,
-
-           "<html>\
-  <head>\
-    <meta http-equiv='refresh' content='5'/>\
-    <title>ESP8266 Demo</title>\
-    <style>\
-      body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
-    </style>\
-  </head>\
-  <body>\
-    <h1>Hello from ESP8266!</h1>\
-    <p>Uptime: %02d:%02d:%02d</p>\
-  </body>\
-</html>",
-
-           hr, min % 60, sec % 60
-          );
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.send(200, "text/html", temp);
-  digitalWrite(led, 0);
-}
-
 void handleNotFound() {
   digitalWrite(led, 1);
   String message = "File Not Found\n\n";
@@ -314,15 +284,12 @@ void handleEditMap() {
 //}
 
 void serveFile(const char* file, const char* type) {
-  //digitalWrite(led, 1);
   File pageFile = LittleFS.open(file, "r");
   //String page = pageFile.readString();
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Headers", "*");
   if (server.streamFile(pageFile, type) != pageFile.size()) {};
   pageFile.close();
-  //server.send(200, type, page);
-  //digitalWrite(led, 0);
 }
 
 void handleDemo(){
@@ -340,6 +307,7 @@ void handleDemo(){
   strip.show();                                        // Turn OFF all pixels ASAP
 }
 
+// Handle requests to light up the LEDs
 void handleLed() {
   Serial.println("Board requested");
   //digitalWrite(led, 1);
@@ -351,13 +319,12 @@ void handleLed() {
   strip.show();            // Turn OFF all pixels ASAP
 
   int circuit = 0;
-  int timeDelay = 0;
+  int timeDelay = 1000;
   
   // get optional args
   for (uint8_t i = 0; i < server.args(); i++) {  
-    //message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
     char arg = server.argName(i).charAt(0);
-    // args
+    // args - test for optional arguements
     // c circuit
     // d delay (for circuits)
     switch(arg){
@@ -375,31 +342,44 @@ void handleLed() {
 
   // half the default brightness for circuits
   int saturation = circuit != 1 ? 255 : 128;
-  //if(circuit != 1)
-  //{  
-    Serial.println("- STANDARD PROBLEM...");
-    Serial.println("- Set LEDs...");
-    for (uint8_t i = 0; i < server.args(); i++) {  
-      char arg = server.arg(i).charAt(0);
-      switch(arg){
-        case 's':
-          strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(0,   255,   0)); 
-          break;
-        case 'h':
-          strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(0,   0,   255));
-          break;
-        case 't':
-          strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(255,   0,   0));
-          break;
-      }
-      strip.show();
-    } 
-    Serial.println("- DONE...");
-  //}else{
+  Serial.println("- STANDARD PROBLEM...");
+  Serial.println("- Set LEDs...");
+  for (uint8_t i = 0; i < server.args(); i++) {  
+    char arg = server.arg(i).charAt(0);
+    switch(arg){
+      case 's':
+        strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(0,   saturation,   0)); 
+        break;
+      case 'h':
+        strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(0,   0,   saturation));
+        break;
+      case 't':
+        strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(saturation,   0,   0));
+        break;
+    }
+    strip.show();
+  } 
+  Serial.println("- DONE...");
+
+  // Extra logic for circuits
   if(circuit){
     Serial.println("- CIRCUIT...");
-    // get start holds and light them
-    int startHolds[2];
+    Serial.println("- countdown - flash holds...");
+    for (int i = 0; i < 5; i++) {
+      Serial.println("- bright...");
+      strip.setBrightness(255);
+      strip.show(); 
+      delay(1000);
+      Serial.println("- dim...");
+      strip.setBrightness(50);
+      strip.show(); 
+      delay(1000);
+    }
+    //Serial.println("- dim all...");
+    //strip.setBrightness(50);
+    //delay(1000);
+
+    // get start holds and light them bright (already been dimly lit above)
     int startHoldsCount=0;
     // loop args and find start holds
     Serial.println("- Light start holds...");
@@ -408,33 +388,19 @@ void handleLed() {
       if(arg == 's'){
         // light up start holds
         strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(0,   255,   0)); 
+        startHoldsCount+=1;
       }
     }
     strip.show();
     Serial.println("- wait...");
-    delay(5000);
-
-    Serial.println("- flash start holds...");
-    for (int i = 0; i < 5; i++) {
-      Serial.println("- bright...");
-      strip.setBrightness(100);
-      strip.show(); 
-      delay(1000);
-      Serial.println("- dim...");
-      strip.setBrightness(10);
-      strip.show(); 
-      delay(1000);
-    }
-    Serial.println("- full bright...");
-    strip.setBrightness(255);
     delay(1000);
-  
 
+    // Loop through holds and light them up as we go
     for (uint8_t i = 0; i < server.args(); i++) {  
       int red, green, blue = 0;
-      //if(i > 2) strip.setPixelColor(server.argName(i-1).toInt()-1, strip.Color(0,   0,   100)); // change last hold - dim
-      if(i > 2) strip.setPixelColor(server.argName(i-3).toInt()-1, strip.Color(0,   0,   128));   // change second last hold - off
+      if(i > 2) strip.setPixelColor(server.argName(i-3).toInt()-1, strip.Color(0,   0,   50));   // change second last hold - dim
       char arg = server.arg(i).charAt(0);
+      // skip start holds - already handled
       if(arg=='h' || arg=='t'){
         if(arg=='h'){
           // blue hand holds
@@ -452,13 +418,13 @@ void handleLed() {
           strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(red, green, blue)); // turn off hold
           strip.show();
           delay(300);
-          strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(red/3, green/3, blue/3)); // light up new LED
+          strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(red/5, green/5, blue/5)); // light up new LED
           strip.show();
           delay(300);
           strip.setPixelColor(server.argName(i).toInt()-1, strip.Color(red, green, blue)); // turn off hold
           strip.show();
         }     
-        delay(1000);
+        delay(timeDelay);
       }
     }
   }  // turn off other holds and leave just finish holds
@@ -480,9 +446,6 @@ void heartBeat() {
   int red =random(255);
   int green = random(255);
   int blue = random (255);
-  //strip.setPixelColor(0, redo, greeno, blueo);
-  //strip.setPixelColor(1, redo, greeno, blueo);
-  //strip.setPixelColor(2, redo, greeno, blueo);
    for(int i=0; i<strip.numPixels(); i++) {             // For each pixel in strip...
      strip.setPixelColor(i, strip.Color(red, green, blue));  //  Set pixel's color (in RAM)
    }
