@@ -43,6 +43,7 @@
 #ifndef WIFISSID
 #define WIFISSID "THEBOARD"
 #define WIFIPSK  ""
+#define WIFIMD "AP"
 #endif
 
 // Which pin on the Arduino is connected to the LEDs?
@@ -66,6 +67,9 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel() ;
 const char* conf = "/config.json"; // config file
 const char* defaultSsid = WIFISSID; // fallback SSID
 const char* defaultPassword = WIFIPSK; // fallback password
+const char* defaultWifiMode = WIFIMD;
+const char* defaultLedType = "NEO_GRB"; 
+const char* defaultLedFreq = "NEO_KHZ800";
 char usrSsid[64]; // user SSID
 char usrPass[64]; // user password
 char usrMode[10]; // user wifi mode
@@ -150,8 +154,12 @@ void initLEDs(){
   Serial.println(usrLedFreq);
   //Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, STRIPPIN, NEO_GRB + NEO_KHZ800);
   strip.updateLength(usrLeds);
-  strip.setPin(D1);
-  strip.updateType(NEO_RGB + NEO_KHZ800);
+  strip.setPin(usrLedPin);
+  int ledType;
+  int ledFreq;
+  ledType = (strcmp(usrLedType, "NEO_GRB"))    ? NEO_GRB    : NEO_RGB;
+  ledFreq = (strcmp(usrLedFreq, "NEO_KHZ800")) ? NEO_KHZ800 : NEO_KHZ400;
+  strip.updateType(ledType + ledFreq);
   strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
   strip.show();            // Turn OFF all pixels ASAP
   strip.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
@@ -194,21 +202,6 @@ void initConfig(){
         strcpy(usrPass, doc["pass"]);  
         strcpy(usrLedType, doc["ledType"]);
         strcpy(usrLedFreq, doc["ledFreq"]);  
-        // debug
-        Serial.print(F("-- LEDs: "));
-        Serial.println(usrLeds);
-        Serial.print(F("-- LED pin: "));
-        Serial.println(usrLedPin);
-        Serial.print(F("-- LED Type: "));
-        Serial.println(usrLedType);
-        Serial.print(F("-- LED Freq: "));
-        Serial.println(usrLedFreq);
-        Serial.print(F("-- SSID: "));
-        Serial.println(usrSsid);
-        Serial.print(F("-- Password: "));
-        Serial.println(usrPass);
-        Serial.print(F("-- Mode: "));
-        Serial.println(usrMode);
         config=true;
         break;
     case DeserializationError::InvalidInput:
@@ -220,9 +213,33 @@ void initConfig(){
     default:
         Serial.print(F("-- Deserialization failed"));
         break;
-}
-
-
+  }
+  if(!config){
+    Serial.print(F("- Config failed to load, use defaults"));
+      strcpy(usrMode, defaultWifiMode);
+      strcpy(usrSsid, defaultSsid);
+      strcpy(usrPass, defaultPassword);  
+      strcpy(usrLedType, defaultLedType);
+      strcpy(usrLedFreq, defaultLedFreq);  
+      //usrLeds = LED_COUNT;
+      //usrLedPin= LED_PIN;
+      
+  }
+  // debug
+  Serial.print(F("-- LEDs: "));
+  Serial.println(usrLeds);
+  Serial.print(F("-- LED pin: "));
+  Serial.println(usrLedPin);
+  Serial.print(F("-- LED Type: "));
+  Serial.println(usrLedType);
+  Serial.print(F("-- LED Freq: "));
+  Serial.println(usrLedFreq);
+  Serial.print(F("-- SSID: "));
+  Serial.println(usrSsid);
+  Serial.print(F("-- Password: "));
+  Serial.println(usrPass);
+  Serial.print(F("-- Mode: "));
+  Serial.println(usrMode);
 }
 
 void initFS(){

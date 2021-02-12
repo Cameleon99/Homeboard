@@ -7,11 +7,11 @@
       <script type="text/javascript" src="	js/tabulator.min.js"></script>
     </head>
 <body>
-     
+
 <!-- Modal -->
 <div class="modal fade" id="modal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
   <div class="modal-dialog">
-    <div class="modal-content">a
+    <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="modalLabel">Settings</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -43,11 +43,31 @@
             <label for="wifiMode">LED settings:</label>
             <div class="input-group mb-3">
               <div class="input-group-prepend">
-                <span class="input-group-text" id="ledStringLen">String length</span>
+                <span class="input-group-text" id="ledStringLen">LED count</span>
               </div>
               <input type="number" min=1 value="1" class="form-control" placeholder="" aria-label="LED" aria-describedby="ledStringLen" name="ledStringLen" required>
+              <div class="input-group-prepend">
+                <span class="input-group-text" id="ledStringLen">Output Pin</span>
+              </div>
+              <input type="number" min=1 value="1" class="form-control" placeholder="" aria-label="LED" aria-describedby="ledPin" name="ledPin" required>
+            
             </div>
-          
+            <div class="input-group mb-3">
+              <div class="input-group-prepend">
+                <label class="input-group-text" for="ledType">LED type</label>
+              </div>
+              <select class="custom-select" id="ledType" name="ledType" >
+                <option value="NEO_GRB" selected>NEO_GRB</option>
+                <option value="NEO_RGB">NEO_RGB</option>
+              </select>
+              <div class="input-group-prepend">
+                <label class="input-group-text" for="ledFreq">LED frequency</label>
+              </div>
+              <select class="custom-select" id="ledFreq" name="ledFreq" >
+                <option value="NEO_KHZ400" selected>NEO_KHZ400</option>
+                <option value="NEO_KHZ800">NEO_KHZ800</option>
+              </select>
+            </div>
         </div>
         <div class="modal-footer">
           <label class="form-check-label" for="setting-status" id="seting-status-label"></label>
@@ -65,12 +85,13 @@
       <div class="col-sm">
        <br/>
        <button id="reset-board" type="button" class="btn btn-primary" data-bs-toggle="button" autocomplete="off">Reset board</button>
-       <br/>
+       <p/>
       </div>
       <div class="col-sm-2">
        <div class="form-check form-switch">
        <input class="form-check-input" type="checkbox" id="mirror-problem" onclick="setProblem();">
        <label class="form-check-label" for="mirror-problem">Mirror problem</label>
+       </p>
        </div>
       </div>
       <div class="col-sm-6">
@@ -78,10 +99,12 @@
        <button onclick="this.parentNode.querySelector('input[type=number]').stepDown()" ><</button>
        <input  id="circuit-repeat" min="0" max=10 name="quantity" value="1" type="number">
        <button onclick="this.parentNode.querySelector('input[type=number]').stepUp()" >></button>
+       <p/>
       </div>
       <div class="col-sm">
        <!-- Button trigger modal -->
        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal">Settings</button>
+       <p/>
       </div>
       </div> <!-- End row -->
      <div id="table"  class="table-striped"></div>
@@ -100,8 +123,8 @@
          <button id="save-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Save</button>
          <button id="cancel-data" type="button" class="btn btn-primary float-right" data-bs-toggle="button" autocomplete="off" disabled>Cancel</button>
        </div>
+       
      </div>
-     
      <script>
     host = location.hostname;
     // get required data 
@@ -217,10 +240,13 @@
      // var form = document.forms[0];
 
         data = {
-          ssid : form.querySelector('input[name="wifiSsid"]').value,
-          pass : form.querySelector('input[name="wifiPass"]').value,
-          mode : form.querySelector('select[name="wifiMode"]').value,
-          leds : form.querySelector('input[name="ledStringLen"]').value
+          ssid    : form.querySelector('input[name="wifiSsid"]').value,
+          pass    : form.querySelector('input[name="wifiPass"]').value,
+          mode    : form.querySelector('select[name="wifiMode"]').value,
+          leds    : form.querySelector('input[name="ledStringLen"]').value,
+          ledPin  : form.querySelector('input[name="ledPin"]').value,
+          ledType : form.querySelector('select[name="ledType"]').value,
+          ledFreq : form.querySelector('select[name="ledFreq"]').value
         }
         
         console.log("Settings: " + data);
