@@ -1,3 +1,5 @@
+
+
 /*
    Copyright (c) 2015, Majenko Technologies
    All rights reserved.
@@ -27,7 +29,8 @@
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-#include <LittleFS.h> // LittleFS is declared
+#include <LittleFS.h>
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
@@ -35,17 +38,17 @@
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
 
-#ifndef STASSID
-#define STASSID ""
-#define STAPSK  ""
+
+// hardcoded default wifi values, used for AP mode
+#ifndef WIFISSID
+#define WIFISSID "THEBOARD"
+#define WIFIPSK  ""
 #endif
 
 // Which pin on the Arduino is connected to the LEDs?
-//#define LED_PIN    D1
+#define LED_PIN    D1 //fallback LED pin
 // How many LEDs are attached to the Arduino?
-//#define LED_COUNT 60
-
-
+#define LED_COUNT 0 // fallback LED count
 
 // Declare our NeoPixel strip object:
 //Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_RGB + NEO_KHZ800);
@@ -60,99 +63,31 @@
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel() ;
 
-
-const char *defaultSsid = STASSID;
-const char *defaultPassword = STAPSK;
+const char* conf = "/config.json"; // config file
+const char* defaultSsid = WIFISSID; // fallback SSID
+const char* defaultPassword = WIFIPSK; // fallback password
+char usrSsid[64]; // user SSID
+char usrPass[64]; // user password
+char usrMode[10]; // user wifi mode
+char usrLedType[10]; // user LED type
+char usrLedFreq[15]; // user LED freq
+int  usrLeds;     // user LED count
+int  usrLedPin;     // user LED count
+boolean config = false;
 
 ESP8266WebServer server(80);
 
-const int led = 13;
-
 void setup(void) {
-  
   // SETUP YOUR OUTPUT PIN AND NUMBER OF PIXELS
   String ssid = "";
-
-  Serial.println("");
-  Serial.println("INITIALISE : LED strip");
-  //Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, STRIPPIN, NEO_GRB + NEO_KHZ800);
-  strip.updateLength(55);
-  strip.setPin(D1);
-  strip.updateType(NEO_RGB + NEO_KHZ800);
-  strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
-  strip.show();            // Turn OFF all pixels ASAP
-  strip.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
-  Serial.println("- DONE");
-
-  Serial.println(F("INITIALISE : FS"));
-  if (LittleFS.begin()){
-    Serial.println(F("- DONE"));
-  }else{
-    Serial.println(F("- FAIL"));
-  }
-  
-  pinMode(led, OUTPUT);
-  digitalWrite(led, 0);
   Serial.begin(115200);
-  boolean config = true;
-  Serial.println("INITIALISE : WIFI");
-  if(config){
-    ssid = defaultSsid;
-    Serial.println("- STA mode - config found");
-    WiFi.mode(WIFI_STA);
-    WiFi.hostname("TheBoard");
-    WiFi.begin(ssid, defaultPassword);
-    Serial.println("- Running");
-  }else{
-    ssid = "TheBoard";
-    Serial.println("- AP mode - no config");
-    WiFi.softAP(ssid, "");
-    Serial.println("- Running");
-  }
-
-  
-
-  // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
   Serial.println("");
-  Serial.print("- Connected to ");
-  Serial.println(ssid);
-  Serial.print("- IP address: ");
-  Serial.println(WiFi.localIP());
-
-  //if (WiFi.status() == WL_CONNECTED) {
-  //    WiFi.hostname("TheBoard");
-  //}
-
-  if (MDNS.begin("THEBOARD")) {
-    Serial.println("- MDNS responder started");
-  }
+  initFS();     // initialise the filesystem
+  initConfig(); // initialise the config
+  initLEDs();   // initialise the LEDs
+  initWifi();   // initialise the WiFi
+  initHttp();   // initialuse the HTTP server
   
-  Serial.println("- DONE");
-  // Main page
-  server.on("/", handleBoard);
-  // Internal requests
-  server.on("/led", handleLed);                       // Handle LED requests
-  server.on("/map", handleEditMap);                   // Handle hold/LED mapping
-  server.on("/updateProblems", handleUpdateProblems); // Internal update to save file
-  server.on("/updateMap", handleUpdateMap);           // Internal update to save file
-  server.on("/demo", handleDemo);                     // Internal demo mode
-  server.on("/problems.json", []() {serveFile("/problems.json", "application/json; charset=utf-8");} );
-  server.on("/holdMap.json",  []() {serveFile("/holdMap.json", "application/json; charset=utf-8");} );
-  server.on("/css/bootstrap.min.css", []() {serveFile("/css/bootstrap.min.css", "text/css; charset=utf-8");} );
-  server.on("/js/bootstrap.bundle.min.js", []() {serveFile("/js/bootstrap.bundle.min.js", "application/javascript; charset=utf-8");} );
-  server.on("/css/tabulator_modern.min.css", []() {serveFile("/css/tabulator_modern.min.css", "text/css; charset=utf-8");} );
-  server.on("/js/tabulator.min.js", []() {serveFile("/js/tabulator.min.js", "application/javascript; charset=utf-8");} );
-  server.on("/favicon.ico", []() {serveFile("/favicon.ico", "image/x-icon");} );
-  server.onNotFound(handleNotFound);
-  Serial.println("INITIALISE : HTTP Server");
-  server.begin();
-  Serial.println("- DONE");
-
   // startup fun :o)
   Serial.println("INITIALISE - Startup Animation");
   for(int j=0; j<5; j++) {
@@ -160,7 +95,7 @@ void setup(void) {
     heartBeat();
   }
   // Reset the LEDs to OFF
-  Serial.println("- Blank the board");
+  Serial.println(F("- Blank the board"));
   for(int i=0; i<strip.numPixels(); i++) {             // For each pixel in strip...
     strip.setPixelColor(i, strip.Color(0,   0,   0));  //  Set pixel's color (in RAM)
   }
@@ -174,10 +109,200 @@ void loop(void) {
   MDNS.update();
 }
 
-// HANDLE DIFFERENT PAGES
 
+// INIT functions
+
+void initHttp(){
+  // Main page
+  server.on("/", handleBoard);
+  // Internal requests
+  server.on("/led", handleLed);                       // Handle LED requests
+  server.on("/map", handleEditMap);                   // Handle hold/LED mapping
+  server.on("/updateProblems", handleUpdateProblems); // Internal update to save file
+  server.on("/updateMap", handleUpdateMap);           // Internal update to save file
+  server.on("/updateConfig", handleUpdateConfig);           // Internal update to save file
+  server.on("/demo", handleDemo);                     // Internal demo mode
+  server.on("/problems.json", []() {serveFile("/problems.json", "application/json; charset=utf-8");} );
+  server.on("/holdMap.json",  []() {serveFile("/holdMap.json", "application/json; charset=utf-8");} );
+  server.on("/config.json",  []() {serveFile("/config.json", "application/json; charset=utf-8");} );
+  server.on("/css/bootstrap.min.css", []() {serveFile("/css/bootstrap.min.css", "text/css; charset=utf-8");} );
+  server.on("/js/bootstrap.bundle.min.js", []() {serveFile("/js/bootstrap.bundle.min.js", "application/javascript; charset=utf-8");} );
+  server.on("/css/tabulator_modern.min.css", []() {serveFile("/css/tabulator_modern.min.css", "text/css; charset=utf-8");} );
+  server.on("/js/tabulator.min.js", []() {serveFile("/js/tabulator.min.js", "application/javascript; charset=utf-8");} );
+  server.on("/favicon.ico", []() {serveFile("/favicon.ico", "image/x-icon");} );
+  server.onNotFound(handleNotFound);
+  Serial.println(F("INITIALISE : HTTP Server"));
+  server.begin();
+  Serial.println(F("- DONE"));
+}
+
+void initLEDs(){
+  // Setup LEDs - setup and blank them ASAP! 
+  Serial.println(F("INITIALISE : LED strip"));
+  Serial.println(F(" - LEDs : "));
+  Serial.print(F("--LED count : "));
+  Serial.println(usrLeds);
+  Serial.print(F("--LED pin   : "));
+  Serial.println(usrLedPin);
+  Serial.print(F("--LED opts  : "));
+  Serial.print(usrLedType);
+  Serial.print("+");
+  Serial.println(usrLedFreq);
+  //Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, STRIPPIN, NEO_GRB + NEO_KHZ800);
+  strip.updateLength(usrLeds);
+  strip.setPin(D1);
+  strip.updateType(NEO_RGB + NEO_KHZ800);
+  strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
+  strip.show();            // Turn OFF all pixels ASAP
+  strip.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
+  Serial.println(F("- DONE"));
+}
+
+void initConfig(){
+  // Initialise Config
+  Serial.println(F("INITIALISE : CONFIG"));
+  // open and parse json config file
+  Serial.println(F("- OPEN config file"));
+  File configFile = LittleFS.open("/config.json", "r");
+  if (!configFile) {
+    Serial.println(F("- Failed to open config file"));
+  }
+  size_t confSize = configFile.size();
+  Serial.print(F("- Config size: "));
+  Serial.println(confSize);
+  if (confSize > 1024) {
+    Serial.println(F("- Config file size is too large"));
+  }
+  // Allocate a buffer to store contents of the file.
+  std::unique_ptr<char[]> buf(new char[confSize]);
+
+  configFile.readBytes(buf.get(), confSize);
+
+  Serial.print("JSON: ");
+  Serial.println(buf.get());
+
+  StaticJsonDocument<200> doc;
+  DeserializationError err = deserializeJson(doc, buf.get());
+  switch (err.code()) {
+    case DeserializationError::Ok:
+        Serial.print(F("--Deserialization succeeded"));
+        usrLeds = doc["leds"];
+        usrLedPin = doc["ledPin"];
+        // copy to globals
+        strcpy(usrMode, doc["mode"]);
+        strcpy(usrSsid, doc["ssid"]);
+        strcpy(usrPass, doc["pass"]);  
+        strcpy(usrLedType, doc["ledType"]);
+        strcpy(usrLedFreq, doc["ledFreq"]);  
+        // debug
+        Serial.print(F("-- LEDs: "));
+        Serial.println(usrLeds);
+        Serial.print(F("-- LED pin: "));
+        Serial.println(usrLedPin);
+        Serial.print(F("-- LED Type: "));
+        Serial.println(usrLedType);
+        Serial.print(F("-- LED Freq: "));
+        Serial.println(usrLedFreq);
+        Serial.print(F("-- SSID: "));
+        Serial.println(usrSsid);
+        Serial.print(F("-- Password: "));
+        Serial.println(usrPass);
+        Serial.print(F("-- Mode: "));
+        Serial.println(usrMode);
+        config=true;
+        break;
+    case DeserializationError::InvalidInput:
+        Serial.print(F("-- Invalid input!"));
+        break;
+    case DeserializationError::NoMemory:
+        Serial.print(F("-- Not enough memory"));
+        break;
+    default:
+        Serial.print(F("-- Deserialization failed"));
+        break;
+}
+
+
+}
+
+void initFS(){
+  // Initialise the file system 
+  Serial.println(F("INITIALISE : FS"));
+  if (LittleFS.begin()){
+    Serial.println(F("- DONE"));
+  }else{
+    Serial.println(F("- FAIL"));
+  }
+}
+
+void initWifi(){
+  Serial.println(F("INITIALISE : WIFI"));
+  boolean running = false;
+  // force reset of wifi config
+  WiFi.disconnect(true);
+  Serial.println(F("- USER Config:"));
+  Serial.print(F("-- LEDs: "));
+  Serial.println(usrLeds);
+  Serial.print(F("-- SSID: "));
+  Serial.println(usrSsid);
+  Serial.print(F("-- Password: "));
+  Serial.println(usrPass);
+  Serial.print(F("-- Mode: "));
+  Serial.println(usrMode);
+  
+  if(config){
+    if(strcmp(usrMode, "STA") == 0){
+      Serial.println(F("- USER STA mode"));
+      WiFi.mode(WIFI_STA);
+      WiFi.hostname("TheBoard");
+      running = WiFi.begin(usrSsid, usrPass);
+      // Wait for connection
+      Serial.print(F("- Connecting"));
+      int retries = 20;
+      while (WiFi.status() != WL_CONNECTED && retries > 0) {
+        delay(1000);
+        Serial.print(".");
+        retries -= 1;
+      }
+      Serial.println(".");
+      if(WiFi.status() != WL_CONNECTED){
+        Serial.print(F("- WiFi connection failed : "));
+        Serial.println(WiFi.status());
+      }
+    }else{
+      Serial.println(F("- USER AP mode"));
+      running = WiFi.softAP(usrSsid, usrPass);
+    }
+  }else{
+    strcpy(usrMode,"AP");
+    Serial.println(F("- DEFAULT AP mode - no config"));
+    running = WiFi.softAP(defaultSsid, defaultSsid);
+  }
+  if(running == true){
+      Serial.println(F("- Running"));
+  }else{
+      Serial.println(F("- WiFi FAILED!"));
+  } 
+
+  Serial.println("");
+  Serial.print(usrMode=="AP" ? "- Broadcasting on: " : "- Connected to: ");
+  Serial.println(usrSsid);
+  Serial.print(F("- IP address: "));
+  Serial.println(usrMode=="AP" ? WiFi.softAPIP() : WiFi.localIP() );
+
+  if (MDNS.begin("THEBOARD")) {
+    Serial.println(F("- MDNS responder started"));
+  }
+  
+  Serial.println(F("- DONE"));
+}
+
+
+// HANDLE PAGE REQUESTS
+
+// 404 - NOT FOUND
 void handleNotFound() {
-  digitalWrite(led, 1);
+//  digitalWrite(led, 1);
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += server.uri();
@@ -192,7 +317,7 @@ void handleNotFound() {
   }
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(404, "text/plain", message);
-  digitalWrite(led, 0);
+//  digitalWrite(led, 0);
 }
 
 void handleUpdateProblems() { //Handler for the body path
@@ -243,6 +368,30 @@ void handleUpdateMap() { //Handler for the body path
   Serial.println(message);
 }
 
+void handleUpdateConfig() { //Handler for the body path
+ 
+  if (server.hasArg("plain")== false){ //Check if body received
+     server.sendHeader("Access-Control-Allow-Origin", "*");
+     server.sendHeader("Access-Control-Allow-Headers", "*");
+     server.send(200, "text/plain", "Body not received");
+    return;
+  }
+ 
+  String message = "Body received:\n";
+         message += server.arg("plain");
+         message += "\n";
+
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Headers", "*");
+
+  File mapFile = LittleFS.open(F("/config.json"), "w");
+  mapFile.print(server.arg("plain"));
+  mapFile.close();
+    
+  server.send(200, "text/plain", message);
+  Serial.println(message);
+}
+
 void handleBoard() {
   //digitalWrite(led, 1);
   File pageFile = LittleFS.open(F("/board.html"), "r");
@@ -263,26 +412,6 @@ void handleEditMap() {
   //digitalWrite(led, 0);
 }
 
-//void handleProblems() {
-//  //digitalWrite(led, 1);
-//  File pageFile = LittleFS.open(F("/problems.json"), "r");
-//  String page = pageFile.readString();
-//  pageFile.close();
-//  server.sendHeader("Access-Control-Allow-Origin", "*");
-//  server.send(200, " application/json", page);
-//  //digitalWrite(led, 0);
-//}
-
-//void handleMap() {
-//  //digitalWrite(led, 1);
-//  File pageFile = LittleFS.open(F("/holdMap.json"), "r");
-//  String page = pageFile.readString();
-//  pageFile.close();
-//  server.sendHeader("Access-Control-Allow-Origin", "*");
-//  server.send(200, " application/json", page);
-//  //digitalWrite(led, 0);
-//}
-
 void serveFile(const char* file, const char* type) {
   File pageFile = LittleFS.open(file, "r");
   //String page = pageFile.readString();
@@ -294,13 +423,13 @@ void serveFile(const char* file, const char* type) {
 
 void handleDemo(){
   // startup fun :o)
-  Serial.println("Demo animation");
+  Serial.println(F("Demo animation"));
   for(int j=0; j<10; j++) {
     //heartThrob(20);
     heartBeat();
   }
   // Reset the LEDs to OFF
-  Serial.println("Blank the board");
+  Serial.println(F("Blank the board"));
   for(int i=0; i<strip.numPixels(); i++) {             // For each pixel in strip...
     strip.setPixelColor(i, strip.Color(0,   0,   0));  //  Set pixel's color (in RAM)
   }
@@ -309,7 +438,7 @@ void handleDemo(){
 
 // Handle requests to light up the LEDs
 void handleLed() {
-  Serial.println("Board requested");
+  Serial.println(F("Board requested"));
   //digitalWrite(led, 1);
   //String message = "Updating board...\n\n";
   // Reset the LEDs to OFF
@@ -342,8 +471,8 @@ void handleLed() {
 
   // half the default brightness for circuits
   int saturation = circuit != 1 ? 255 : 128;
-  Serial.println("- STANDARD PROBLEM...");
-  Serial.println("- Set LEDs...");
+  Serial.println(F("- STANDARD PROBLEM..."));
+  Serial.println(F("- Set LEDs..."));
   for (uint8_t i = 0; i < server.args(); i++) {  
     char arg = server.arg(i).charAt(0);
     switch(arg){
@@ -359,18 +488,18 @@ void handleLed() {
     }
     strip.show();
   } 
-  Serial.println("- DONE...");
+  Serial.println(F("- DONE..."));
 
   // Extra logic for circuits
   if(circuit){
-    Serial.println("- CIRCUIT...");
-    Serial.println("- countdown - flash holds...");
+    Serial.println(F("- CIRCUIT..."));
+    Serial.println(F("- countdown - flash holds..."));
     for (int i = 0; i < 5; i++) {
-      Serial.println("- bright...");
+      Serial.println(F("- bright..."));
       strip.setBrightness(255);
       strip.show(); 
       delay(1000);
-      Serial.println("- dim...");
+      Serial.println(F("- dim..."));
       strip.setBrightness(50);
       strip.show(); 
       delay(1000);
@@ -382,7 +511,7 @@ void handleLed() {
     // get start holds and light them bright (already been dimly lit above)
     int startHoldsCount=0;
     // loop args and find start holds
-    Serial.println("- Light start holds...");
+    Serial.println(F("- Light start holds..."));
     for (uint8_t i = 0; i < server.args(); i++) {  
       char arg = server.arg(i).charAt(0);
       if(arg == 's'){
@@ -441,7 +570,7 @@ void handleLed() {
 
 
 void heartBeat() {  
-  Serial.println("- Animate LEDs");
+  Serial.println(F("- Animate LEDs"));
   // all pixels show the same color:
   int red =random(255);
   int green = random(255);

@@ -8,6 +8,58 @@
     </head>
 <body>
      
+<!-- Modal -->
+<div class="modal fade" id="modal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">a
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalLabel">Settings</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form  id="formSettings">
+        <div class="modal-body">
+            <label for="wifiMode">Wifi settings:</label>
+            <div class="input-group mb-3">
+              <div class="input-group-prepend">
+                <span class="input-group-text" id="wifiSsid">SSID</span>
+              </div>
+              <input type="text" class="form-control" placeholder="" aria-label="SSID" aria-describedby="wifiSsid" name="wifiSsid" id="wifiSsidValue"required>
+            </div>
+            <div class="input-group mb-3">
+              <div class="input-group-prepend">
+                <span class="input-group-text" id="wifiPass">Password</span>
+              </div>
+              <input type="password" class="form-control" placeholder="" aria-label="Password" aria-describedby="wifiPass" name="wifiPass" required>
+            </div>
+            <div class="input-group mb-3">
+              <div class="input-group-prepend">
+                <label class="input-group-text" for="wifiMode">Wifi mode</label>
+              </div>
+              <select class="custom-select" id="wifiMode" name="wifiMode" >
+                <option value="STA" selected>Station</option>
+                <option value="AP">AP</option>
+              </select>
+            </div>
+            <label for="wifiMode">LED settings:</label>
+            <div class="input-group mb-3">
+              <div class="input-group-prepend">
+                <span class="input-group-text" id="ledStringLen">String length</span>
+              </div>
+              <input type="number" min=1 value="1" class="form-control" placeholder="" aria-label="LED" aria-describedby="ledStringLen" name="ledStringLen" required>
+            </div>
+          
+        </div>
+        <div class="modal-footer">
+          <label class="form-check-label" for="setting-status" id="seting-status-label"></label>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary" id="save-settings">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- END Modal -->
      <div class=container>
      <div class="row align-items-end">
       <div class="col-sm">
@@ -15,17 +67,21 @@
        <button id="reset-board" type="button" class="btn btn-primary" data-bs-toggle="button" autocomplete="off">Reset board</button>
        <br/>
       </div>
-      <div class="col-sm">
+      <div class="col-sm-2">
        <div class="form-check form-switch">
        <input class="form-check-input" type="checkbox" id="mirror-problem" onclick="setProblem();">
        <label class="form-check-label" for="mirror-problem">Mirror problem</label>
        </div>
       </div>
-      <div class="col-sm">
+      <div class="col-sm-6">
        <label id="repeat-text">Circuit Repeat :</label>
        <button onclick="this.parentNode.querySelector('input[type=number]').stepDown()" ><</button>
        <input  id="circuit-repeat" min="0" max=10 name="quantity" value="1" type="number">
        <button onclick="this.parentNode.querySelector('input[type=number]').stepUp()" >></button>
+      </div>
+      <div class="col-sm">
+       <!-- Button trigger modal -->
+       <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal">Settings</button>
       </div>
       </div> <!-- End row -->
      <div id="table"  class="table-striped"></div>
@@ -49,8 +105,13 @@
      <script>
     host = location.hostname;
     // get required data 
+    
+    var settings; 
+    
     getProblems();
     getLedMap();
+    getSettings();
+    
     
     // hide buttons
     document.getElementById('add-data').style.visibility = 'hidden';
@@ -148,6 +209,57 @@
     });
 	////////////////////////////////////////////////////
 	
+	formSettings.onsubmit = async (e) => {
+      e.preventDefault();
+    
+    //function saveSettings(){
+      var form = document.querySelector("#formSettings");
+     // var form = document.forms[0];
+
+        data = {
+          ssid : form.querySelector('input[name="wifiSsid"]').value,
+          pass : form.querySelector('input[name="wifiPass"]').value,
+          mode : form.querySelector('select[name="wifiMode"]').value,
+          leds : form.querySelector('input[name="ledStringLen"]').value
+        }
+        
+        console.log("Settings: " + data);
+        
+        var json = JSON.stringify(data);
+        console.log("Setting array: " + json);
+        console.log("Send json to board....");
+        document.getElementById("seting-status-label").innerHTML="Saving...";
+        // construct an HTTP request
+        var xhr = new XMLHttpRequest();
+        var url = "http://"+host+"/updateConfig";
+        xhr.open("POST", url);
+        xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+        xhr.timeout = 2000; // Set timeout to 4 seconds (4000 milliseconds)
+        
+        // send the collected data as JSON
+        xhr.send(json);
+        console.log("Sent!");
+        xhr.ontimeout = function () { document.getElementById("seting-status-label").innerHTML="ERROR: Request Timed Out"; }
+        xhr.onloadend = function () {
+          // done
+          console.log("Save setting response: ");
+          //receiveResponses(this);
+          if (this.readyState == 4) {
+            if (this.status == 200) {
+              console.log("We got a response : " + this.response);
+              document.getElementById("seting-status-label").innerHTML="Saved!";
+            } else if (this.status == 0) {
+              console.log("The computer appears to be offline.");
+              //alert("ERROR: Board appears to be offline");
+              document.getElementById("seting-status-label").innerHTML="ERROR - not saved!";
+            }
+          } 
+        };
+        
+        
+        //let text = await response.text(); // read response body as text
+        //document.querySelector("#decoded").innerHTML = text;
+    };
 	
 	// HELPER FUNCTIONS
 	
@@ -181,12 +293,33 @@
     // Get LED conversions 
     function getLedMap(){
       ledMap = "";
-      const holdsRey = new Request('holdMap.json');
-      fetch(holdsRey, {cache: "no-store"})
+      const holdsReq = new Request('holdMap.json');
+      fetch(holdsReq, {cache: "no-store"})
        .then(response => response.json())
        .then(data => {
        	 console.log("LED  maps (from file): " + data);
        	 ledMap = data;
+       	 //table.setData(ledMap);
+       	})
+       .catch(console.error);
+    };
+    // Get settings 
+    function getSettings(){
+      settings = "";
+      const holdsReq = new Request('config.json');
+      fetch(holdsReq, {cache: "no-store"})
+       .then(response => response.json())
+       .then(data => {
+       	 console.log("Config: " + data.ssid);
+       	 settings = data;
+       	 //table.setData(ledMap);
+       	 var form = document.querySelector("#formSettings");
+
+          form.querySelector('input[name="wifiSsid"]').value    = data.ssid;
+          form.querySelector('input[name="wifiPass"]').value    = data.pass;
+          form.querySelector('select[name="wifiMode"]').value   = data.mode;
+          form.querySelector('input[name="ledStringLen"]').value= data.leds; 
+
        	})
        .catch(console.error);
     };
